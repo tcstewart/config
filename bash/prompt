@@ -1,0 +1,137 @@
+#!/bin/bash
+
+Red="\033[0;31m"
+Green="\033[1;32m"
+Blue="\033[1;34m"
+
+NO_COLOR="\033[0m"
+PROMPT_NO_COLOR="\[${NO_COLOR}\]"
+
+if [ -z ${SSH_TTY} ]
+then
+    COLOR="${Red}"
+    PROMPT_COLOR="\[${Red}\]"
+else
+    COLOR="${Green}"
+    PROMPT_COLOR="\[${Green}\]"
+fi
+
+if [ -e /etc/debian_chroot ]
+then
+   COLOR="${Blue}"
+   PROMPT_COLOR="\[${Blue}\]"
+fi
+
+export NO_COLOR PROMPT_NO_COLOR
+export COLOR PROMPT_COLOR
+
+
+function print_chroot_env
+{
+    if [ -e /etc/debian_chroot ]
+    then
+        CHROOT_ENV=`cat /etc/debian_chroot`
+        echo -e "[${COLOR}${CHROOT_ENV}${NO_COLOR}]"
+    fi
+}
+
+function print_svn_branch
+{
+    SVN_BRANCH=`svn info 2> /dev/null | grep "^URL:" | awk '{print $2}'`
+  
+    if [ ! -z "${SVN_BRANCH}" ]
+    then
+        echo -e "[${COLOR}${SVN_BRANCH}${NO_COLOR}]"
+    fi
+}
+
+function print_git_branch
+{
+    GIT_BRANCH=`git branch 2> /dev/null | grep "*" | awk '{print $2}'`
+
+    if [ ! -z "${GIT_BRANCH}" ]
+    then
+        GIT_REMOTE=`git remote -v | awk '/^origin/ {print $2}' | head -n 1`
+
+        if [ ! -z "${GIT_REMOTE}" ]
+        then
+            GIT_BRANCH="${GIT_BRANCH}  ${GIT_REMOTE}"
+        fi
+ 
+        echo -e "[${COLOR}${GIT_BRANCH}${NO_COLOR}]"
+    fi
+}
+
+function print_circ_status
+{
+    
+    ${HOME}/data/projects/circ/target/circ -s 2>/dev/null | while read line
+    do
+        if [ ! -z "${line}" ]
+        then
+            echo -e "[${Green}${line}${NO_COLOR}]"
+        fi
+    done
+}
+
+function set_terminal_title
+{
+    if [ ! "${TERM}" = "linux" -a ! "${TERM}" = "vt100" ]
+    then
+       echo -ne "\033]0;"${USER}@${HOSTNAME}: ${PWD}"\007"
+    fi
+}
+
+function prompt_command
+{
+
+    if [ -z "${COLUMNS}" ]
+    then
+        COLUMNS=80
+    fi
+
+    let promptsize=$(echo -n "(${USER}@${HOSTNAME})(${PWD})" | wc -c | tr -d " ")
+    let fillsize=${COLUMNS}-${promptsize}
+    
+    fill=""
+
+    if [ "${fillsize}" -lt "0" ]
+    then
+        let cut=3-${fillsize}+1
+        newPWD="...$(echo -n ${PWD} | cut -c ${cut}-)"
+    else
+        printf -v fill "%${fillsize}s" ' '
+        newPWD=${PWD}
+    fi
+  
+
+    set_terminal_title
+    
+    print_circ_status
+    print_chroot_env
+    print_svn_branch
+    print_git_branch
+    
+}
+
+PROMPT_COMMAND=prompt_command
+
+function termwide
+{
+
+   if [ ! -z "${PS1}" ]
+   then
+      PS1="${PROMPT_NO_COLOR}[${PROMPT_COLOR}\${USER}${PROMPT_NO_COLOR}@${PROMPT_COLOR}\${HOSTNAME}${PROMPT_NO_COLOR}]"
+      PS1="${PS1}\${fill}[${PROMPT_COLOR}\${newPWD}${PROMPT_NO_COLOR}]\n"
+      PS1="${PS1}[${PROMPT_COLOR}\d \t${PROMPT_NO_COLOR}]${PROMPT_NO_COLOR} "
+    
+      PS2="${PROMPT_COLOR}-${PROMPT_NO_COLOR}-- "
+   fi
+
+   if [ ! -z "${NO_PROMPT}" ]
+   then
+      PS1=">"
+   fi
+
+}
+
